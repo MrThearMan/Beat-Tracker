@@ -362,7 +362,7 @@ def audio_to_novelty_curve(audio, sampling_rate, threshold=-74, window_length=No
     return novelty_curve, feature_rate
 
 
-def novelty_curve_to_tempogram_via_DFT(novelty_curve, feature_rate, tempo_window=6, stepsize=0, bpm=0):
+def novelty_curve_to_tempogram_via_DFT(novelty_curve, feature_rate, tempo_window=6, stepsize=None, bpm=None):
     """Computes a complex valued fourier tempogram for a given novelty curve indicating note onset candidates in the form of peaks.
 
     :param novelty_curve: Novelty curve-array.
@@ -374,16 +374,16 @@ def novelty_curve_to_tempogram_via_DFT(novelty_curve, feature_rate, tempo_window
     :param tempo_window: Trade-off between time- and tempo resolution.
     Lower tempo window means tempo will be more susceptible to changes but more accurate and higher means less tempo changes but more stable tempo. Default is a compromise of both.
     :type tempo_window:
-    :param bpm: Vector containing BPM values to compute.
+    :param bpm: Vector containing BPM values to compute. Prior knowledge can help to stablilize the tempo and select the correct predominant pulse level (Measure, Tactus, Tatum..)
     :type bpm: np.ndarray
     :return: tempogram: Complex valued fourier tempogram, bpm: Vector of BPM values of the tempo axis of the tempogram, tt: Vector of time positions (in sec) for the frames of the tempogram
     :rtype: tuple[np.ndarray, np.ndarray, np.ndarray]
     """
 
-    if bpm == 0:
+    if bpm is None:
         bpm = np.arange(30, 601, 1)
 
-    if stepsize == 0:
+    if stepsize is None:
         stepsize = math.ceil(feature_rate / 5)
 
     win_len = round2(tempo_window * feature_rate)
@@ -1023,36 +1023,71 @@ def sonify(curve, audio, sampling_rate, feature_rate, min_confidence=0.01, only_
         return np.concatenate((audio[..., None], out[..., None]), axis=1)
 
 
-def plot_novelty_curve(novelty_curve):
+def plot_novelty_curve(novelty_curve, duration, ticks=10):
     """Plot novelty curve.
 
     :param novelty_curve: Novelty curve data.
     :type novelty_curve: np.ndarray
+    :param duration: Novelty curve audio duration (s)
+    :type duration: int or float
+    :param ticks: Number of ticks to show for secons.
+    :type ticks: int
     """
 
-    plt.plot(novelty_curve)
+    fig, ax = plt.subplots()
+
+    x_ticks = np.arange(start=0, stop=len(novelty_curve) + len(novelty_curve) / ticks, step=len(novelty_curve) / ticks)
+    x_labels = np.arange(start=0, stop=round2(duration) + round2(duration) / ticks, step=round2(duration) / ticks)
+    x_labels = np.round(x_labels, 1)
+
+    ax.plot(novelty_curve)
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(x_labels)
+    ax.set_title("Novelty Curve")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Novelty")
     plt.show()
 
 
-def plot_tempogram(tempogram):
+def plot_tempogram(tempogram, bpm, tt):
     """Plot tempogram.
 
     :param tempogram: Tempogram data.
     :type tempogram: np.ndarray
     """
 
-    plt.imshow(np.abs(tempogram), extent=[0, 1, 0, 1], cmap="hot", origin="lower")
+    fig, ax = plt.subplots()
+
+    ax.imshow(np.abs(tempogram), aspect="auto", extent=[tt[0][0], tt[0][-1], bpm[0][0], bpm[-1][0]], cmap="hot", origin="lower")
+    ax.set_title("Tempogram")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Tempo (BPM)")
     plt.show()
 
 
-def plot_plp_curve(plp):
+def plot_plp_curve(plp, duration, ticks=10):
     """Plot PLP curve.
 
     :param plp: PLP data.
     :type plp: np.ndarray
+    :param duration: Novelty curve audio duration (s)
+    :type duration: int or float
+    :param ticks: Number of ticks to show for secons.
+    :type ticks: int
     """
 
-    plt.plot(plp)
+    fig, ax = plt.subplots()
+
+    x_ticks = np.arange(start=0, stop=len(plp) + len(plp) / ticks, step=len(plp) / ticks)
+    x_labels = np.arange(start=0, stop=round2(duration) + round2(duration) / ticks, step=round2(duration) / ticks)
+    x_labels = np.round(x_labels, 1)
+
+    ax.plot(plp)
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(x_labels)
+    ax.set_title("PLP Curve")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Confidence")
     plt.show()
 
 
@@ -1069,13 +1104,19 @@ if __name__ == "__main__":
 
     novelty_curve, feature_rate = audio_to_novelty_curve(audio, sampling_rate=audioinfo["sampling_rate"])
 
+    # plot_novelty_curve(novelty_curve, audioinfo["duration"])
+
     tempo_window = 12
 
     tempogram, bpm, tt = novelty_curve_to_tempogram_via_DFT(novelty_curve=novelty_curve, feature_rate=feature_rate, tempo_window=tempo_window)
     tempogram = normalize_curve_to_threshold(curve=tempogram)
 
+    # plot_tempogram(tempogram, bpm, tt)
+
     plp = tempogram_to_PLP_curve(tempogram=tempogram, feature_rate=feature_rate, tt=tt, bpm=bpm, tempo_window=tempo_window)
     plp = plp[:novelty_curve.shape[0]][..., None]
+
+    # plot_plp_curve(plp, audioinfo["duration"])
 
     sonification = sonify(curve=plp, audio=audio, sampling_rate=audioinfo["sampling_rate"], feature_rate=feature_rate, half_tempo=True)
 
